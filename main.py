@@ -26,8 +26,6 @@ app.add_middleware(
 )
 
 
-# ─── SIGNUP ─────────────────────────────────────────────────────
-
 @app.post("/api/signup", response_model=SignupResponse, status_code=201)
 async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
 
@@ -57,8 +55,6 @@ async def signup(data: SignupRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
-# ─── LOGIN ──────────────────────────────────────────────────────
-
 @app.post("/api/login", response_model=LoginResponse)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
@@ -71,8 +67,6 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     return LoginResponse(id=user.id, email=user.email, zone=user.zone)
 
 
-# ─── GET USER BY ID ─────────────────────────────────────────────
-
 @app.get("/api/users/{user_id}")
 async def get_user(user_id: int, db: AsyncSession = Depends(get_db)):
 
@@ -84,8 +78,6 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db)):
 
     return {"id": user.id, "email": user.email, "phone": user.phone, "zone": user.zone}
 
-
-# ─── HEALTH ─────────────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health():
