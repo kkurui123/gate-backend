@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: gate-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gate-db
+          property: connectionString
+
+databases:
+  - name: gate-db
+    plan: free
+    postgresVersion: "15"   
