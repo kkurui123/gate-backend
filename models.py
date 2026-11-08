@@ -19,7 +19,9 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    sender_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    recipient_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    sender_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    recipient_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    media_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    media_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at = mapped_column(DateTime(timezone=True), server_default=func.now())   
