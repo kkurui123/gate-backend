@@ -4,11 +4,8 @@ from sqlalchemy.orm import DeclarativeBase
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql+asyncpg://gate_db_2eds_user:IzMAsIY98OtYEtdFbCVVtUhKw8JC0vzw@dpg-dbnho1bm8hqs73c8hbtg-a/gate_db_2eds"
+    "postgresql+asyncpg://neondb_owner:IzMAsIY98OtYEtdFbCVVtUhKw8JC0vzw@gate-db--.neon.tech:5432/gate_db?ssl=require"
 )
-
-# Render may inject ?sslmode=require but asyncpg expects ?ssl=require
-DATABASE_URL = DATABASE_URL.replace("sslmode=require", "ssl=require")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
