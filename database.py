@@ -7,6 +7,9 @@ DATABASE_URL = os.environ.get(
     "postgresql+asyncpg://neondb_owner:IzMAsIY98OtYEtdFbCVVtUhKw8JC0vzw@gate-db--.neon.tech:5432/gate_db?ssl=require"
 )
 
+# Safety net in case env var still has sslmode
+DATABASE_URL = DATABASE_URL.replace("sslmode=require", "ssl=require")
+
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
