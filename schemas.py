@@ -1,6 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
-from datetime import datetime
 
 
 class SignupRequest(BaseModel):
@@ -10,6 +9,7 @@ class SignupRequest(BaseModel):
     role: str = Field(default="guard", pattern=r"^(guard|admin|investigator)$")
     password: str = Field(..., min_length=8)
     confirm_password: str
+    admin_auth_code: Optional[str] = None
 
 
 class SignupResponse(BaseModel):
@@ -41,32 +41,5 @@ class IncidentCreate(BaseModel):
     is_urgent: bool = False
 
 
-class IncidentResponse(BaseModel):
-    id: int
-    reporter_id: int
-    reporter_email: str
-    zone: str
-    type: str
-    location: str
-    description: str
-    is_urgent: bool
-    status: str
-    photo_url: Optional[str] = None
-    resolved_by: Optional[int] = None
-    resolution_note: Optional[str] = None
-    created_at: str
-    resolved_at: Optional[str] = None
-
-
 class IncidentResolve(BaseModel):
-    resolution_note: str = Field(..., min_length=5)
-
-
-class AuditLogResponse(BaseModel):
-    id: int
-    user_id: Optional[int]
-    user_email: Optional[str]
-    action: str
-    detail: Optional[str]
-    ip_address: Optional[str]
-    created_at: str   
+    resolution_note: str = Field(..., min_length=5)   

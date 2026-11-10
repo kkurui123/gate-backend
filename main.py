@@ -9,14 +9,14 @@ import json
 import uuid
 import os
 from datetime import datetime
+from typing import Optional
 
 from database import get_db, init_db, AsyncSessionLocal
 from models import User, Message, Incident, AuditLog
 from schemas import (
     SignupRequest, SignupResponse,
     LoginRequest, LoginResponse,
-    IncidentCreate, IncidentResponse, IncidentResolve,
-    AuditLogResponse,
+    IncidentCreate, IncidentResolve,
 )
 from auth import hash_password, verify_password
 
@@ -27,8 +27,17 @@ active_connections: dict[int, list] = {}
 MEDIA_DIR = "/tmp/media"
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
+ADMIN_AUTH_CODE = "GATE_ADMIN_2024"
+MAX_ADMINS = 3
 
-async def log_action(db: AsyncSession, user_id: int | None, action: str, detail: str | None = None, ip: str | None = None):
+
+async def log_action(
+    db: AsyncSession,
+    user_id: int | None,
+    action: str,
+    detail: str | None = None,
+    ip: str | None = None,
+):
     entry = AuditLog(user_id=user_id, action=action, detail=detail, ip_address=ip)
     db.add(entry)
     await db.commit()
@@ -42,22 +51,27 @@ async def lifespan(app: FastAPI):
 
 
 async def seed_default_admin():
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(User).where(User.email == "ADMIN123@GMAIL.COM")
-        )
-        existing = result.scalar_one_or_none()
-        if not existing:
-            admin = User(
-                email="ADMIN123@GMAIL.COM",
-                phone="0000000000",
-                zone="Gate A",
-                role="admin",
-                hashed_password=hash_password("Code001#"),
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(User).where(User.email == "ADMIN123@GMAIL.COM")
             )
-            session.add(admin)
-            await session.commit()
-            print("✅ Default admin seeded")
+            existing = result.scalar_one_or_none()
+            if not existing:
+                admin = User(
+                    email="ADMIN123@GMAIL.COM",
+                    phone="0000000000",
+                    zone="Gate A",
+                    role="admin",
+                    hashed_password=hash_password("Code001#"),
+                )
+                session.add(admin)
+                await session.commit()
+                print("✅ Default admin seeded: ADMIN123@GMAIL.COM")
+            else:
+                print("ℹ️  Default admin already exists, skipping.")
+    except Exception as e:
+        print(f"❌ Admin seed failed: {e}")
 
 
 app = FastAPI(title="Gate App API", lifespan=lifespan)
@@ -84,6 +98,25 @@ async def signup(
     result = await db.execute(select(User).where(User.email == data.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
+
+    # ── Role restrictions ──
+    if data.role in ("admin", "investigator"):
+        admin_count_result = await db.execute(
+            select(User).where(User.role.in_(["admin", "investigator"]))
+        )
+        existing_admins = admin_count_result.scalars().all()
+
+        if len(existing_admins) >= MAX_ADMINS:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Maximum of {MAX_ADMINS} admin/investigator accounts reached",
+            )
+
+        if data.admin_auth_code != ADMIN_AUTH_CODE:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid admin authorization code",
+            )
 
     new_user = User(
         email=data.email,
@@ -175,17 +208,30 @@ async def get_all_users(
     query = select(User)
     if search:
         term = f"%{search}%"
-        query = query.where(or_(
-            User.email.ilike(term),
-            User.phone.ilike(term),
-            User.zone.ilike(term),
-        ))
+        query = query.where(
+            or_(
+                User.email.ilike(term),
+                User.phone.ilike(term),
+                User.zone.ilike(term),
+            )
+        )
     result = await db.execute(query)
     users = result.scalars().all()
     return [
-        {"id": u.id, "email": u.email, "phone": u.phone, "zone": u.zone, "role": u.role}
+        {
+            "id": u.id,
+            "email": u.email,
+            "phone": u.phone,
+            "zone": u.zone,
+            "role": u.role,
+        }
         for u in users
     ]
+
+
+@app.get("/api/users/online")
+async def get_online_users():
+    return {"online_ids": list(active_connections.keys())}
 
 
 @app.get("/api/users/{user_id}")
@@ -198,8 +244,12 @@ async def get_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {
-        "id": user.id, "email": user.email, "phone": user.phone,
-        "zone": user.zone, "role": user.role, "photo": user.photo,
+        "id": user.id,
+        "email": user.email,
+        "phone": user.phone,
+        "zone": user.zone,
+        "role": user.role,
+        "photo": user.photo,
     }
 
 
@@ -228,18 +278,24 @@ async def get_messages(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Message).where(
+        select(Message)
+        .where(
             or_(
                 (Message.sender_id == user_id) & (Message.recipient_id == contact_id),
                 (Message.sender_id == contact_id) & (Message.recipient_id == user_id),
             )
-        ).order_by(Message.created_at.asc())
+        )
+        .order_by(Message.created_at.asc())
     )
     messages = result.scalars().all()
     return [
         {
-            "id": m.id, "sender_id": m.sender_id, "recipient_id": m.recipient_id,
-            "text": m.text, "media_url": m.media_url, "media_type": m.media_type,
+            "id": m.id,
+            "sender_id": m.sender_id,
+            "recipient_id": m.recipient_id,
+            "text": m.text,
+            "media_url": m.media_url,
+            "media_type": m.media_type,
             "created_at": str(m.created_at),
         }
         for m in messages
@@ -295,12 +351,12 @@ async def serve_media(filename: str):
     file_path = os.path.join(MEDIA_DIR, filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-    if filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp')):
-        media_type = "image/" + filename.split('.')[-1]
-    elif filename.endswith(('.mp4', '.mov', '.avi', '.webm')):
-        media_type = "video/" + filename.split('.')[-1]
-    elif filename.endswith(('.m4a', '.mp3', '.wav', '.ogg')):
-        media_type = "audio/" + filename.split('.')[-1]
+    if filename.endswith((".jpg", ".jpeg", ".png", ".gif", ".webp")):
+        media_type = "image/" + filename.split(".")[-1]
+    elif filename.endswith((".mp4", ".mov", ".avi", ".webm")):
+        media_type = "video/" + filename.split(".")[-1]
+    elif filename.endswith((".m4a", ".mp3", ".wav", ".ogg")):
+        media_type = "audio/" + filename.split(".")[-1]
     else:
         media_type = "application/octet-stream"
     return FileResponse(file_path, media_type=media_type)
@@ -437,7 +493,10 @@ async def resolve_incident(
     inc.resolution_note = data.resolution_note
     await db.commit()
 
-    await log_action(db, resolver_id, "incident_resolved", f"Incident #{incident_id}: {data.resolution_note}")
+    await log_action(
+        db, resolver_id, "incident_resolved",
+        f"Incident #{incident_id}: {data.resolution_note}",
+    )
 
     return {"success": True, "status": "resolved"}
 
@@ -477,19 +536,24 @@ async def forensic_extract(
         raise HTTPException(status_code=404, detail="User not found")
 
     msg_result = await db.execute(
-        select(Message).where(
-            or_(Message.sender_id == user_id, Message.recipient_id == user_id)
-        ).order_by(Message.created_at.asc())
+        select(Message)
+        .where(or_(Message.sender_id == user_id, Message.recipient_id == user_id))
+        .order_by(Message.created_at.asc())
     )
     messages = msg_result.scalars().all()
 
     inc_result = await db.execute(
-        select(Incident).where(Incident.reporter_id == user_id).order_by(desc(Incident.created_at))
+        select(Incident)
+        .where(Incident.reporter_id == user_id)
+        .order_by(desc(Incident.created_at))
     )
     incidents = inc_result.scalars().all()
 
     audit_result = await db.execute(
-        select(AuditLog).where(AuditLog.user_id == user_id).order_by(desc(AuditLog.created_at)).limit(100)
+        select(AuditLog)
+        .where(AuditLog.user_id == user_id)
+        .order_by(desc(AuditLog.created_at))
+        .limit(100)
     )
     logs = audit_result.scalars().all()
 
