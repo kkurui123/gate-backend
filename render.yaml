@@ -7,8 +7,4 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        value: "postgresql+asyncpg://neondb_owner:IzMAsIY98OtYEtdFbCVVtUhKw8JC0vzw@gate-db--.neon.tech:5432/gate_db?ssl=require"   
-databases:
-  - name: gate-db
-    plan: free
-    postgresVersion: "15"   
+        value: "postgresql+asyncpg://neondb_owner:YOUR_PASSWORD@gate-db--.neon.tech:5432/gate_db?ssl=require"   
