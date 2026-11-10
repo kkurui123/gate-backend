@@ -2,11 +2,13 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
-# Read from environment (Render injects this), fall back to local Neon string
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql+asyncpg://gate_db_2eds_user:IzMAsIY98OtYEtdFbCVVtUhKw8JC0vzw@dpg-dbnho1bm8hqs73c8hbtg-a/gate_db_2eds?ssl=require"
+    "postgresql+asyncpg://gate_db_2eds_user:IzMAsIY98OtYEtdFbCVVtUhKw8JC0vzw@dpg-dbnho1bm8hqs73c8hbtg-a/gate_db_2eds"
 )
+
+# Render may inject ?sslmode=require but asyncpg expects ?ssl=require
+DATABASE_URL = DATABASE_URL.replace("sslmode=require", "ssl=require")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
