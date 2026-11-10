@@ -7,4 +7,9 @@ services:
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
-        value: "postgresql+asyncpg://gate_db_2eds_user:IzMAsIY98OtYEtdFbCVVtUhKw8JC0vzw@dpg-dbnho1bm8hqs73c8hbtg-a.oregon-postgres.render.com/gate_db_2eds?ssl=require"   
+        value: "postgresql+asyncpg://gate_db_2eds_user:IzMAsIY98OtYEtdFbCVVtUhKw8JC0vzw@dpg-dbnho1bm8hqs73c8hbtg-a.oregon-postgres.render.com/gate_db_2eds?ssl=require"
+
+databases:
+  - name: gate-db
+    plan: free
+    postgresVersion: "15"   
