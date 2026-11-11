@@ -1,47 +1,113 @@
+
 import os
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    async_sessionmaker,
+    AsyncSession,
+)
 from sqlalchemy.orm import DeclarativeBase
 
+
+# --------------------------------------------------
+# DATABASE CONFIGURATION
+# --------------------------------------------------
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
+
 if not DATABASE_URL:
-    raise EnvironmentError("DATABASE_URL not set")
+    raise EnvironmentError("DATABASE_URL environment variable is not set")
 
-# Strip any sslmode param and replace with ssl
-DATABASE_URL = DATABASE_URL.replace("sslmode=require", "ssl=require")
-DATABASE_URL = DATABASE_URL.replace("sslmode=prefer", "ssl=prefer")
-DATABASE_URL = DATABASE_URL.replace("&sslmode=require", "")
-DATABASE_URL = DATABASE_URL.replace("?sslmode=require", "")
 
-# Remove channel_binding (asyncpg doesn't support it)
-DATABASE_URL = DATABASE_URL.replace("&channel_binding=require", "")
-DATABASE_URL = DATABASE_URL.replace("?channel_binding=require", "")
+try:
+    database_url = make_url(DATABASE_URL)
 
-# Ensure asyncpg driver
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = "postgresql+asyncpg://" + DATABASE_URL[len("postgresql://"):]
+    # Ensure PostgreSQL uses the asyncpg driver.
+    if database_url.drivername in ("postgres", "postgresql"):
+        database_url = database_url.set(
+            drivername="postgresql+asyncpg"
+        )
 
-# Add ssl if no ssl param exists
-if "ssl" not in DATABASE_URL.split("?")[-1] if "?" in DATABASE_URL else True:
-    if "?" in DATABASE_URL:
-        DATABASE_URL += "&ssl=require"
+    elif database_url.drivername == "postgresql+asyncpg":
+        pass
+
     else:
-        DATABASE_URL += "?ssl=require"
+        raise ValueError(
+            "Unsupported database driver. "
+            "Expected PostgreSQL with asyncpg."
+        )
 
-print(f"🔗 Connecting to: {DATABASE_URL.split('@')[-1]}")
+    # Clean up parameters that asyncpg does not need.
+    query_params = dict(database_url.query)
 
-engine = create_async_engine(DATABASE_URL, echo=False)
-AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+    query_params.pop("sslmode", None)
+    query_params.pop("channel_binding", None)
 
+    # Require SSL unless explicitly configured.
+    query_params.setdefault("ssl", "require")
+
+    DATABASE_URL = database_url.set(
+        query=query_params
+    )
+
+except Exception as exc:
+    raise RuntimeError(
+        f"Invalid DATABASE_URL configuration: {exc}"
+    ) from exc
+
+
+# --------------------------------------------------
+# DATABASE ENGINE
+# --------------------------------------------------
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+)
+
+
+# --------------------------------------------------
+# SESSION FACTORY
+# --------------------------------------------------
+
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+
+# --------------------------------------------------
+# SQLALCHEMY BASE
+# --------------------------------------------------
 
 class Base(DeclarativeBase):
     pass
 
+
+# --------------------------------------------------
+# DATABASE DEPENDENCY
+# --------------------------------------------------
 
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
 
 
+# --------------------------------------------------
+# DATABASE INITIALIZATION
+# --------------------------------------------------
+
 async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)   
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+
+# --------------------------------------------------
+# DATABASE SHUTDOWN
+# --------------------------------------------------
+
+async def close_db():
+    await engine.dispose()
